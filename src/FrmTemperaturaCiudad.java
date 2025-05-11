@@ -12,6 +12,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
 
 import javax.swing.BoxLayout;
 import javax.swing.DefaultComboBoxModel;
@@ -26,12 +28,16 @@ import javax.swing.JTabbedPane;
 import javax.swing.JToolBar;
 import javax.swing.WindowConstants;
 
+import org.jfree.chart.plot.CategoryPlot;
+import org.jfree.chart.plot.ValueMarker;
+
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.axis.DateAxis;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
+import org.jfree.data.category.DefaultCategoryDataset;
 import org.jfree.data.time.Day;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
@@ -93,15 +99,15 @@ public class FrmTemperaturaCiudad extends JFrame {
         pnlDatosProceso.add(lblTemperatura);
 
         cmbCiudad = new JComboBox();
-        cmbCiudad.setBounds(110, 10, 100, 25);
-        pnlDatosProceso.add(cmbCiudad);
+        // cmbCiudad.setBounds(110, 10, 100, 25);
+        // pnlDatosProceso.add(cmbCiudad);
 
         dccDesde = new DateChooserCombo();
-        dccDesde.setBounds(220, 10, 100, 25);
+        dccDesde.setBounds(110, 10, 100, 25);
         pnlDatosProceso.add(dccDesde);
 
         dccHasta = new DateChooserCombo();
-        dccHasta.setBounds(330, 10, 100, 25);
+        dccHasta.setBounds(220, 10, 100, 25);
         pnlDatosProceso.add(dccHasta);
 
         pnlGrafica = new JPanel();
@@ -132,40 +138,55 @@ public class FrmTemperaturaCiudad extends JFrame {
     }
 
     private void btnGraficarClick() {
-        if (cmbCiudad.getSelectedIndex() >= 0) {
+    LocalDate desde = dccDesde.getSelectedDate().toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+    LocalDate hasta = dccHasta.getSelectedDate().toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
 
-            String ciudad = (String) cmbCiudad.getSelectedItem();
-            LocalDate desde = dccDesde.getSelectedDate().toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
-            LocalDate hasta = dccHasta.getSelectedDate().toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+    // Filtrar solo por fechas
+    List<Temperatura> datosFiltrados = datos.stream()
+        .filter(d -> {
+            LocalDate fecha = d.getFecha();
+            return (fecha.isEqual(desde) || fecha.isAfter(desde)) &&
+                   (fecha.isEqual(hasta) || fecha.isBefore(hasta));
+        })
+        .collect(Collectors.toList());
 
-            var datosFiltrados = ServicioTemperaturaCiudad.filtrar(ciudad, desde, hasta, datos);
+    // Agrupar por ciudad y calcular promedio de temperatura
+    Map<String, Double> promedios = datosFiltrados.stream()
+        .collect(Collectors.groupingBy(
+            Temperatura::getCiudad,
+            Collectors.averagingDouble(Temperatura::getTemperatura)
+        ));
 
-            org.jfree.data.category.DefaultCategoryDataset dataset = new org.jfree.data.category.DefaultCategoryDataset();
+    // Crear dataset con los promedios
+    DefaultCategoryDataset dataset = new DefaultCategoryDataset();
+    promedios.forEach((ciudad, promedio) -> {
+        dataset.addValue(promedio, "Promedio", ciudad);
+    });
 
-            DateTimeFormatter formato = DateTimeFormatter.ofPattern("dd/MM/yyyy");
-            datosFiltrados
-                    .forEach(t -> dataset.addValue(t.getTemperatura(), "Temperatura", t.getFecha().format(formato)));
+    // Crear la gráfica
+    JFreeChart chart = ChartFactory.createBarChart(
+        "Promedio de Temperatura por Ciudad",
+        "Ciudad",
+        "°C",
+        dataset
+    );
 
-            JFreeChart chart = ChartFactory.createBarChart(
-                    "Temperatura de " + ciudad,
-                    "Fecha",
-                    "°C",
-                    dataset);
+    // Configurar el gráfico
+    CategoryPlot plot = chart.getCategoryPlot();
+    plot.getRangeAxis().setRange(0, 30);
 
-            // Fijar el rango del eje Y de 0 a 30
-            chart.getCategoryPlot().getRangeAxis().setRange(0, 30);
+    // Mostrar en el panel
+    pnlGrafica.removeAll();
+    pnlGrafica.setLayout(new BorderLayout());
+    ChartPanel chartPanel = new ChartPanel(chart);
+    chartPanel.setPreferredSize(new Dimension(300, 200));
+    pnlGrafica.add(chartPanel, BorderLayout.CENTER);
+    pnlGrafica.validate();
+    pnlGrafica.repaint();
 
-            pnlGrafica.removeAll();
-            pnlGrafica.setLayout(new BorderLayout());
-            ChartPanel chartPanel = new ChartPanel(chart);
-            chartPanel.setPreferredSize(new Dimension(300, 200)); // Ajusta el tamaño deseado
-            pnlGrafica.add(chartPanel, BorderLayout.CENTER);
-            pnlGrafica.validate();
+    tpTemperaturaCiudad.setSelectedIndex(0);
+}
 
-            tpTemperaturaCiudad.setSelectedIndex(0);
-        }
-
-    }
 
     private void btnCalcularEstadisticasClick() {
         if (cmbCiudad.getSelectedIndex() >= 0) {
@@ -175,7 +196,7 @@ public class FrmTemperaturaCiudad extends JFrame {
             LocalDate hasta = dccHasta.getSelectedDate().toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
 
             System.out.println(ciudad + " " + desde + " " + hasta);
-            
+
             tpTemperaturaCiudad.setSelectedIndex(1);
 
             var estadisticas = ServicioTemperaturaCiudad.getEstadisticas(ciudad, desde, hasta, datos);
@@ -194,8 +215,8 @@ public class FrmTemperaturaCiudad extends JFrame {
 
             }
 
-           
-    }
+        }
 
+    }
 }
-}
+

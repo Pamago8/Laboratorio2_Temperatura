@@ -1,4 +1,4 @@
 
-public class TemperaturaPorCiudad {
+public enum TemperaturaPorCiudad {
 
 }
