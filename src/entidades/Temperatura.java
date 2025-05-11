@@ -8,7 +8,7 @@ public class Temperatura {
     private LocalDate fecha;
     private double temperatura;
 
-    public void Temperaturas(String ciudad, LocalDate fecha, double temperatura) {
+    public Temperatura(String ciudad, LocalDate fecha, double temperatura) {
         this.ciudad = ciudad;
         this.fecha = fecha;
         this.temperatura = temperatura;
@@ -21,6 +21,7 @@ public class Temperatura {
     public void setCiudad(String ciudad) {
         this.ciudad = ciudad;
     }
+
     public LocalDate getFecha() {
         return fecha;
     }

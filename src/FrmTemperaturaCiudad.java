@@ -8,6 +8,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -36,16 +37,19 @@ import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
 
 import datechooser.beans.DateChooserCombo;
+import entidades.Temperatura;
+import servicios.ServicioTemperaturaCiudad;
 
 public class FrmTemperaturaCiudad extends JFrame {
 
-    private JComboBox cmbTemperatura;
+    private JComboBox cmbCiudad;
     private DateChooserCombo dccDesde, dccHasta;
     private JTabbedPane tpTemperaturaCiudad;
     private JPanel pnlGrafica;
     private JPanel pnlEstadisticas;
 
-    private List<String> Temperatura;
+    private List<String> ciudades;
+    private List<Temperatura> datos;
 
     public FrmTemperaturaCiudad() {
 
@@ -56,8 +60,8 @@ public class FrmTemperaturaCiudad extends JFrame {
         JToolBar tb = new JToolBar();
 
         JButton btnGraficar = new JButton();
-        btnGraficar.setIcon(new ImageIcon(getClass().getResource("/iconos/temperatura.png")));        
-        btnGraficar.setToolTipText("Grafica Cambios vs Fecha");
+        btnGraficar.setIcon(new ImageIcon(getClass().getResource("/iconos/temperatura.png")));
+        btnGraficar.setToolTipText("Grafica Temperaturas vs Fecha");
         btnGraficar.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent evt) {
                 btnGraficarClick();
@@ -76,8 +80,8 @@ public class FrmTemperaturaCiudad extends JFrame {
         tb.add(btnCalcularEstadisticas);
 
         // Contenedor con BoxLayout (vertical)
-        JPanel pnlCambios = new JPanel();
-        pnlCambios.setLayout(new BoxLayout(pnlCambios, BoxLayout.Y_AXIS));
+        JPanel pnlTemperaturas = new JPanel();
+        pnlTemperaturas.setLayout(new BoxLayout(pnlTemperaturas, BoxLayout.Y_AXIS));
 
         JPanel pnlDatosProceso = new JPanel();
         pnlDatosProceso.setPreferredSize(new Dimension(pnlDatosProceso.getWidth(), 50)); // Altura fija de 100px
@@ -88,9 +92,9 @@ public class FrmTemperaturaCiudad extends JFrame {
         lblTemperatura.setBounds(10, 10, 100, 25);
         pnlDatosProceso.add(lblTemperatura);
 
-        cmbTemperatura = new JComboBox();
-        cmbTemperatura.setBounds(110, 10, 100, 25);
-        pnlDatosProceso.add(cmbTemperatura);
+        cmbCiudad = new JComboBox();
+        cmbCiudad.setBounds(110, 10, 100, 25);
+        pnlDatosProceso.add(cmbCiudad);
 
         dccDesde = new DateChooserCombo();
         dccDesde.setBounds(220, 10, 100, 25);
@@ -110,40 +114,88 @@ public class FrmTemperaturaCiudad extends JFrame {
         tpTemperaturaCiudad.addTab("Estadísticas", pnlEstadisticas);
 
         // Agregar componentes
-        pnlCambios.add(pnlDatosProceso);
-        pnlCambios.add(tpTemperaturaCiudad);
+        pnlTemperaturas.add(pnlDatosProceso);
+        pnlTemperaturas.add(tpTemperaturaCiudad);
 
         getContentPane().add(tb, BorderLayout.NORTH);
-        getContentPane().add(pnlCambios, BorderLayout.CENTER);
+        getContentPane().add(pnlTemperaturas, BorderLayout.CENTER);
+
+        cargarDatos();
+    }
+
+    private void cargarDatos() {
+        datos = ServicioTemperaturaCiudad.getDatos(System.getProperty("user.dir") + "/src/datos/Temperaturas.csv");
+        ciudades = ServicioTemperaturaCiudad.getCiudades(datos);
+        DefaultComboBoxModel dcm = new DefaultComboBoxModel(ciudades.toArray());
+        cmbCiudad.setModel(dcm);
 
     }
 
     private void btnGraficarClick() {
-        if (cmbTemperatura.getSelectedIndex() >= 0) {
+        if (cmbCiudad.getSelectedIndex() >= 0) {
 
-            String moneda = (String) cmbTemperatura.getSelectedItem();
+            String ciudad = (String) cmbCiudad.getSelectedItem();
             LocalDate desde = dccDesde.getSelectedDate().toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
             LocalDate hasta = dccHasta.getSelectedDate().toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
 
+            var datosFiltrados = ServicioTemperaturaCiudad.filtrar(ciudad, desde, hasta, datos);
 
-            // Cambiar a la pestaña de Grafica
-            cmbTemperatura.setSelectedIndex(0);
+            org.jfree.data.category.DefaultCategoryDataset dataset = new org.jfree.data.category.DefaultCategoryDataset();
+
+            DateTimeFormatter formato = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+            datosFiltrados
+                    .forEach(t -> dataset.addValue(t.getTemperatura(), "Temperatura", t.getFecha().format(formato)));
+
+            JFreeChart chart = ChartFactory.createBarChart(
+                    "Temperatura de " + ciudad,
+                    "Fecha",
+                    "°C",
+                    dataset);
+
+            // Fijar el rango del eje Y de 0 a 30
+            chart.getCategoryPlot().getRangeAxis().setRange(0, 30);
+
+            pnlGrafica.removeAll();
+            pnlGrafica.setLayout(new BorderLayout());
+            ChartPanel chartPanel = new ChartPanel(chart);
+            chartPanel.setPreferredSize(new Dimension(300, 200)); // Ajusta el tamaño deseado
+            pnlGrafica.add(chartPanel, BorderLayout.CENTER);
+            pnlGrafica.validate();
+
+            tpTemperaturaCiudad.setSelectedIndex(0);
         }
+
     }
 
     private void btnCalcularEstadisticasClick() {
-        if (cmbTemperatura.getSelectedIndex() >= 0) {
+        if (cmbCiudad.getSelectedIndex() >= 0) {
 
-            String moneda = (String) cmbTemperatura.getSelectedItem();
+            String ciudad = (String) cmbCiudad.getSelectedItem();
             LocalDate desde = dccDesde.getSelectedDate().toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
             LocalDate hasta = dccHasta.getSelectedDate().toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
 
+            System.out.println(ciudad + " " + desde + " " + hasta);
+            
+            tpTemperaturaCiudad.setSelectedIndex(1);
 
-            // Cambiar a la pestaña de estadísticas
-            cmbTemperatura.setSelectedIndex(1); 
+            var estadisticas = ServicioTemperaturaCiudad.getEstadisticas(ciudad, desde, hasta, datos);
+            pnlEstadisticas.removeAll();
+            pnlEstadisticas.setLayout(new GridBagLayout());
+            GridBagConstraints gbc = new GridBagConstraints();
 
-        }
+            int fila = 0;
+            for (var estadistica : estadisticas.entrySet()) {
+                gbc.gridx = 0;
+                gbc.gridy = fila;
+                pnlEstadisticas.add(new JLabel(estadistica.getKey()), gbc);
+                gbc.gridx = 1;
+                pnlEstadisticas.add(new JLabel(String.format("%.2f", estadistica.getValue())), gbc);
+                fila++;
+
+            }
+
+           
     }
 
 }
-
+}
